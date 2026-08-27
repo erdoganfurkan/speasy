@@ -650,6 +650,34 @@ class DirectArchiveDownloader(unittest.TestCase):
             from_master.assert_not_called()
             self.assertFalse(hasattr(root.archive.test, "DS_no_master"))
 
+    def test_a_variable_from_a_master_built_dataset_can_be_saved_back(self):
+        # spz_shape is what the inventory extractor recorded, not metadata of the data itself.
+        # Leaking it into meta made the variable unsaveable: a codec writes meta out as file
+        # attributes and spz_shape is a tuple, which pycdfpp refuses with
+        # "'tuple' object has no attribute 'flags'".
+        import tempfile
+        import yaml
+        from speasy.core.codecs import get_codec
+        from speasy.core.inventory.indexes import SpeasyIndex
+        from speasy.data_providers.generic_archive import load_inventory_file, GenericArchive
+
+        cdf = f"{__HERE__}/resources/ac_k2_mfi_20220101_v03.cdf"
+        entry = {"DS_master": {"inventory_path": "archive/test", "master_file": cdf,
+                               "url_pattern": cdf, "split_rule": "regular"}}
+        with tempfile.TemporaryDirectory() as d:
+            yaml_path = os.path.join(d, "archive.yaml")
+            with open(yaml_path, "w") as f:
+                yaml.safe_dump(entry, f)
+            root = SpeasyIndex(name="root", provider="archive", uid="root")
+            load_inventory_file(yaml_path, root)
+            provider = object.__new__(GenericArchive)
+            result = provider._get_data(product=root.archive.test.DS_master.Magnitude,
+                                        start_time="2022-01-01", stop_time="2022-01-01T23:59")
+
+        self.assertIsNotNone(result)
+        self.assertEqual([k for k in result.meta if k.startswith('spz_')], [])
+        self.assertIsNotNone(get_codec('application/x-cdf').save_variables([result]))
+
     def test_get_product_with_custom_loader(self):
         v = get_product(
             url_pattern="https://cdaweb.gsfc.nasa.gov/pub/data/arase/pwe/hfa/l3/1min/{Y}/erg_pwe_hfa_l3_1min_{Y}{M:02d}{D:02d}_v05_11.cdf",

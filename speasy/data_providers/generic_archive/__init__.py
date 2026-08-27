@@ -72,9 +72,16 @@ def _master_is_available(master_file: str) -> bool:
     return _is_reachable(master_file)
 
 
+# Inventory bookkeeping that has no business in a variable's metadata: spz_ga_cfg is the raw
+# YAML entry, spz_shape is the shape the inventory extractor recorded. Both would be written
+# out as file attributes by a codec asked to save the variable, and spz_shape is a tuple,
+# which pycdfpp refuses. Any other spz_* key is left alone, it may be real metadata.
+_INVENTORY_ONLY_KEYS = ('spz_ga_cfg', 'spz_shape')
+
+
 def _public_meta(node: SpeasyIndex) -> dict:
     return {k: v for k, v in node.__dict__.items()
-            if not k.startswith('__spz_') and k != 'spz_ga_cfg' and not hasattr(v, 'spz_name')}
+            if not k.startswith('__spz_') and k not in _INVENTORY_ONLY_KEYS and not hasattr(v, 'spz_name')}
 
 
 def _merge_meta(file_meta: dict, yaml_meta: dict, priority: str) -> dict:
