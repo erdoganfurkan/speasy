@@ -17,6 +17,7 @@ from speasy.core.cache import CacheCall
 from speasy.core.any_files import list_files as list_remote_files
 from speasy.core.codecs import get_codec
 from speasy.core.span_utils import intersects
+from speasy.core.url_utils import is_local_file, local_file_exists
 from speasy.products import SpeasyVariable
 from speasy.products.variable import merge
 from speasy.core.algorithms import randomized_map
@@ -65,6 +66,11 @@ def _natural_order(file_name: str) -> List[Tuple[int, Union[int, str]]]:
 def _build_url(url_pattern: str, date: datetime, use_file_list=False, force_refresh=False) -> Optional[str]:
     base_ulr = apply_date_format(url_pattern, date)
     if not use_file_list:
+        # A local archive has gaps like any other: without use_file_list nothing lists the
+        # folder, so a day with no file would be handed to the codec as a path that does not
+        # exist. Remote URLs keep their previous behaviour, their existence is the server's answer.
+        if is_local_file(base_ulr) and not local_file_exists(base_ulr):
+            return None
         return base_ulr
     folder_url, rx = base_ulr.rsplit('/', 1)
     files = list_remote_files(folder_url, re.compile(rx), force_refresh=force_refresh)

@@ -116,6 +116,22 @@ class DirectArchiveDownloader(unittest.TestCase):
                         use_file_list=True, file_reader=record_url)
         return resolved
 
+    def test_a_missing_local_file_is_skipped_not_opened(self):
+        # A local archive has gaps like any remote one. Without use_file_list nothing lists the
+        # folder, so _build_url must check the file itself -- otherwise the codec is handed a path
+        # that does not exist and the whole request dies on a FileNotFoundError.
+        with tempfile.TemporaryDirectory() as d:
+            present = os.path.join(d, "data20100101.nc")
+            open(present, "wb").close()
+            pattern = os.path.join(d, "data{Y}{M:02d}{D:02d}.nc")
+            self.assertEqual(dad._build_url(pattern, make_utc_datetime('2010-01-01')), present)
+            self.assertIsNone(dad._build_url(pattern, make_utc_datetime('2010-01-02')))
+
+    def test_a_missing_remote_file_is_still_left_to_the_server(self):
+        # Only local paths are checked up front; a remote URL's existence is the server's answer.
+        self.assertEqual(dad._build_url("https://example.com/d{Y}.cdf", make_utc_datetime('2010-01-01')),
+                         "https://example.com/d2010.cdf")
+
     def test_use_file_list_picks_the_highest_version_number(self):
         # plain sorted() compares digit by digit, so "_v9" landed after "_v10" and a folder that
         # reached double digit versions kept serving its last single digit one.
