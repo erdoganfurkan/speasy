@@ -293,3 +293,27 @@ class _UserDirValidCodec(CodecInterface):
             finally:
                 codecs_registry.__CODECS__.pop('codec/user-dir-valid', None)
                 codecs_registry.__CODECS__.pop('udv', None)
+
+
+class TestIstpCdfMasterFileAlias(unittest.TestCase):
+    """master_cdf_url is the legacy name of master_file and must keep working."""
+
+    def setUp(self):
+        self.codec = get_codec('application/x-cdf')
+        self.assertIsNotNone(self.codec)
+
+    def _resolved_master(self, **master_kwargs):
+        target = 'speasy.core.codecs.bundled_codecs.istp.cdf._load_variables'
+        with mock.patch(target, return_value={'X': None}) as load:
+            self.codec.load_variables(variables=['X'], file=None, **master_kwargs)
+        return load.call_args.kwargs.get('master_file')
+
+    def test_master_file_is_used(self):
+        self.assertEqual(self._resolved_master(master_file='/some/master.cdf'), '/some/master.cdf')
+
+    def test_legacy_master_cdf_url_is_still_honoured(self):
+        self.assertEqual(self._resolved_master(master_cdf_url='/some/master.cdf'), '/some/master.cdf')
+
+    def test_master_file_wins_over_the_legacy_name(self):
+        self.assertEqual(self._resolved_master(master_file='/new.cdf', master_cdf_url='/legacy.cdf'),
+                         '/new.cdf')

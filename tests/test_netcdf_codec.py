@@ -114,3 +114,52 @@ class TestNetCDFCodecRealFile:
     def test_loaded_variable_has_time_axis(self, codec):
         var = codec.load_variable("Magnitude", file=AC_MFI)
         assert var.time.dtype == np.dtype("datetime64[ns]")
+
+
+@pytest.fixture
+def master_and_data(tmp_path):
+    """A data file stripped of its metadata, and the master file that declares it.
+
+    This is what a plain netCDF archive looks like: the records are there, the ISTP
+    attributes describing them are not.
+    """
+    master = tmp_path / "master.nc"
+    ds = netCDF4.Dataset(str(master), "w")
+    ds.createDimension("time", 0)
+    epoch = ds.createVariable("Epoch", "f8", ("time",))
+    epoch.units = "seconds since 1970-01-01"
+    epoch.VAR_TYPE = "support_data"
+    density = ds.createVariable("DENSITY", "f4", ("time",))
+    density.VAR_TYPE = "data"
+    density.DEPEND_0 = "Epoch"
+    density.UNITS = "cm**-3"
+    density.FIELDNAM = "Plasma density"
+    ds.close()
+
+    data = tmp_path / "data.nc"
+    ds = netCDF4.Dataset(str(data), "w")
+    ds.createDimension("time", 10)
+    epoch = ds.createVariable("Epoch", "f8", ("time",))
+    epoch.units = "seconds since 1970-01-01"
+    epoch[:] = np.arange(10) * 60.0
+    density = ds.createVariable("DENSITY", "f4", ("time",))
+    density.DEPEND_0 = "Epoch"
+    density[:] = np.linspace(1.0, 10.0, 10).astype("f4")
+    ds.close()
+    return str(master), str(data)
+
+
+class TestNetCDFCodecMasterFile:
+
+    def test_a_data_file_alone_yields_nothing(self, codec, master_and_data):
+        # Without VAR_TYPE nothing in the file says which variable holds data, so the
+        # loader finds none. This is why a plain netCDF archive needs a master at all.
+        _, data = master_and_data
+        assert codec.load_variable("DENSITY", file=data) is None
+
+    def test_master_file_supplies_the_missing_metadata(self, codec, master_and_data):
+        master, data = master_and_data
+        var = codec.load_variable("DENSITY", file=data, master_file=master)
+        assert var is not None
+        assert var.meta["UNITS"] == "cm**-3"
+        assert len(var.values) == 10          # values still come from the data file

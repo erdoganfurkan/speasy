@@ -106,12 +106,20 @@ class IstpCdf(CodecInterface):
                        variables: List[AnyStr],
                        file: Union[Buffer, str, io.IOBase],
                        cache_remote_files=True,
+                       master_file: Optional[Union[Buffer, str, io.IOBase]] = None,
                        master_cdf_url: Optional[Union[Buffer, str, io.IOBase]] = None,
                        **kwargs
                        ) -> Optional[Mapping[AnyStr, SpeasyVariable]]:
+        """Loads the given variables, optionally using a master file for their metadata.
+
+        ``master_cdf_url`` is the legacy name of ``master_file`` and is still honoured;
+        ``master_file`` wins when both are given. Every codec names it ``master_file``,
+        which is also the archive YAML key, so prefer it for new code.
+        """
         kwargs["variables"] = variables
         kwargs.update((_resolve_url_type(file, prefix="", cache_remote_files=cache_remote_files),
-                       _resolve_url_type(master_cdf_url, prefix="master_", cache_remote_files=cache_remote_files,
+                       _resolve_url_type(master_file or master_cdf_url, prefix="master_",
+                                         cache_remote_files=cache_remote_files,
                                          max_age=_MASTER_CDF_MAX_AGE)))
         return _load_variables(**kwargs)
 
@@ -119,10 +127,12 @@ class IstpCdf(CodecInterface):
     def load_variable(self,
                       variable: AnyStr, file: Union[Buffer, str, io.IOBase],
                       cache_remote_files=True,
+                      master_file: Optional[Union[Buffer, str, io.IOBase]] = None,
                       master_cdf_url: Optional[Union[Buffer, str, io.IOBase]] = None,
                       **kwargs
                       ) -> Optional[SpeasyVariable]:
-        r = self.load_variables(variables=[variable], file=file, master_cdf_url=master_cdf_url,
+        r = self.load_variables(variables=[variable], file=file,
+                                master_file=master_file, master_cdf_url=master_cdf_url,
                                 cache_remote_files=cache_remote_files, **kwargs)
         if r is not None:
             return r.get(variable)

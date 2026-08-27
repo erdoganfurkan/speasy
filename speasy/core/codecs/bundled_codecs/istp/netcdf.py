@@ -16,9 +16,11 @@ from . import _load_variable, _resolve_url_type, _list_variables
 
 log = logging.getLogger(__name__)
 
+_MASTER_FILE_MAX_AGE = timedelta(days=7)
 
-def _load_variables(variables, file=None, buffer=None):
-    istp_loader = pyistp.load(file=file, buffer=buffer)
+
+def _load_variables(variables, file=None, buffer=None, master_file=None, master_buffer=None):
+    istp_loader = pyistp.load(file=file, buffer=buffer, master_file=master_file, master_buffer=master_buffer)
     if istp_loader is not None:
         return {variable: _load_variable(istp_loader, variable) for variable in variables}
     return None
@@ -126,19 +128,28 @@ class IstpNetCDF(CodecInterface):
                        variables: List[AnyStr],
                        file: Union[Buffer, str, io.IOBase],
                        cache_remote_files=True,
+                       master_file: Optional[Union[Buffer, str, io.IOBase]] = None,
                        **kwargs
                        ) -> Optional[Mapping[AnyStr, SpeasyVariable]]:
+        """Loads the given variables, optionally using a master file for their metadata.
+
+        netCDF carries far less metadata than ISTP CDF does, so a master file is how a
+        dataset declares the axes and attributes its data files leave out.
+        """
         kwargs["variables"] = variables
-        kwargs.update((_resolve_url_type(file, prefix="", cache_remote_files=cache_remote_files),))
+        kwargs.update((_resolve_url_type(file, prefix="", cache_remote_files=cache_remote_files),
+                       _resolve_url_type(master_file, prefix="master_", cache_remote_files=cache_remote_files,
+                                         max_age=_MASTER_FILE_MAX_AGE)))
         return _load_variables(**kwargs)
 
     @CacheCall(cache_retention=timedelta(seconds=120), is_pure=True)
     def load_variable(self,
                       variable: AnyStr, file: Union[Buffer, str, io.IOBase],
                       cache_remote_files=True,
+                      master_file: Optional[Union[Buffer, str, io.IOBase]] = None,
                       **kwargs
                       ) -> Optional[SpeasyVariable]:
-        r = self.load_variables(variables=[variable], file=file,
+        r = self.load_variables(variables=[variable], file=file, master_file=master_file,
                                 cache_remote_files=cache_remote_files, **kwargs)
         if r is not None:
             return r.get(variable)
