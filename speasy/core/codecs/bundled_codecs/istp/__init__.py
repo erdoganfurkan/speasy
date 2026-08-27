@@ -1,4 +1,5 @@
 from typing import List, Optional
+import gzip
 import re
 import logging
 
@@ -96,18 +97,40 @@ def _load_variable(istp_loader: pyistp.loader.ISTPLoader, variable) -> SpeasyVar
     return None
 
 
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+def _gunzip_if_needed(buffer: bytes) -> bytes:
+    """Decompresses buffer if it is gzipped, returns it untouched otherwise.
+
+    A remote file has lost its name by the time it gets here, so the magic number is
+    the only thing left to go on. No archive format we read starts with it: an ISTP
+    CDF starts with 0x0000CDF3 and a netCDF3 file with 'CDF'.
+    """
+    if buffer[:2] == _GZIP_MAGIC:
+        return gzip.decompress(buffer)
+    return buffer
+
+
 def _resolve_url_type(url, prefix="", cache_remote_files=True, max_age=None):
     if url is None:
         return prefix + "file", None
     if type(url) is str:
         if is_local_file(url):
-            return prefix + "file", to_local_path(url)
-        return prefix + "buffer", any_loc_open(url, mode='rb', cache_remote_files=cache_remote_files,
-                                               max_age=max_age).read()
+            path = to_local_path(url)
+            # a .gz is handed over decompressed rather than as a path: neither pycdfpp nor
+            # netCDF4 opens a compressed file, and archives distributed as .cdf.gz / .nc.gz
+            # are otherwise unreadable without unpacking them somewhere first
+            if path.endswith(".gz"):
+                with gzip.open(path, "rb") as f:
+                    return prefix + "buffer", f.read()
+            return prefix + "file", path
+        return prefix + "buffer", _gunzip_if_needed(
+            any_loc_open(url, mode='rb', cache_remote_files=cache_remote_files, max_age=max_age).read())
     if type(url) in (memoryview, bytes):
-        return prefix + "buffer", bytes(url)
+        return prefix + "buffer", _gunzip_if_needed(bytes(url))
     if hasattr(url, 'read'):
-        return prefix + "buffer", url.read()
+        return prefix + "buffer", _gunzip_if_needed(url.read())
     return prefix + "file", None
 
 

@@ -317,3 +317,35 @@ class TestIstpCdfMasterFileAlias(unittest.TestCase):
     def test_master_file_wins_over_the_legacy_name(self):
         self.assertEqual(self._resolved_master(master_file='/new.cdf', master_cdf_url='/legacy.cdf'),
                          '/new.cdf')
+
+
+class TestIstpCodecsReadGzippedFiles(unittest.TestCase):
+    """Archives distributed as .cdf.gz / .nc.gz are read without unpacking them first."""
+
+    CDF = f"{__HERE__}/resources/ac_k2_mfi_20220101_v03.cdf"
+
+    def setUp(self):
+        self.codec = get_codec('application/x-cdf')
+        self.assertIsNotNone(self.codec)
+        with open(self.CDF, 'rb') as f:
+            self.raw = f.read()
+
+    def test_a_gzipped_local_file_is_read(self):
+        import gzip
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, 'ac_k2_mfi.cdf.gz')
+            with gzip.open(path, 'wb') as f:
+                f.write(self.raw)
+            var = self.codec.load_variable('Magnitude', file=path)
+        self.assertIsNotNone(var)
+        self.assertEqual(len(var), len(self.codec.load_variable('Magnitude', file=self.CDF)))
+
+    def test_a_gzipped_buffer_is_read(self):
+        # A remote file arrives as bytes with its name already gone, so only the gzip
+        # magic number is left to recognise it by.
+        import gzip
+        var = self.codec.load_variable('Magnitude', file=gzip.compress(self.raw))
+        self.assertIsNotNone(var)
+
+    def test_a_plain_file_is_still_read_untouched(self):
+        self.assertIsNotNone(self.codec.load_variable('Magnitude', file=self.CDF))
