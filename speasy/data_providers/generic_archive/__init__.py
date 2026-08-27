@@ -230,6 +230,11 @@ class GenericArchive(DataProvider):
         master_file = ga_cfg.pop('master_file', None) or ga_cfg.pop('master_cdf', None)
         ga_cfg.pop('meta', None)
         ga_cfg.pop('variables', None)
+        # Transport options meant for the web-API providers. A direct archive reads files, has
+        # no use for them, and forwarding them lands them in a codec signature that does not
+        # take them -- which is a TypeError, not a silently ignored argument.
+        for web_api_only in ('extra_http_headers', 'progress'):
+            kwargs.pop(web_api_only, None)
         result = get_product(**ga_cfg, master_file=master_file,
                              variable=product.spz_name(), start_time=start_time, stop_time=stop_time, **kwargs)
         if result is not None:

@@ -625,6 +625,38 @@ class DirectArchiveDownloader(unittest.TestCase):
         self.assertEqual(len(result), 10)
         self.assertEqual(result.meta.get("UNITS"), "cm**-3")
 
+    def test_get_data_ignores_options_meant_for_the_web_api_providers(self):
+        # extra_http_headers is in GET_DATA_ALLOWED_KWARGS, so any caller may pass it -- a
+        # caching proxy passes it on every request. A direct archive has no use for it, and
+        # forwarding it reached the codec as an unexpected keyword argument, which killed
+        # every archive product. This test fails before the fix.
+        try:
+            import netCDF4  # noqa: F401
+        except ImportError:
+            self.skipTest("netCDF4 is not installed")
+        import tempfile
+        import yaml
+        from speasy.core.inventory.indexes import SpeasyIndex
+        from speasy.data_providers.generic_archive import load_inventory_file, GenericArchive
+
+        with tempfile.TemporaryDirectory() as d:
+            master, pattern = self._netcdf_archive_with_master(d)
+            entry = {"DS_nc": {"inventory_path": "archive/test", "master_file": master,
+                               "codec": "nc", "url_pattern": pattern, "split_rule": "regular"}}
+            yaml_path = os.path.join(d, "archive.yaml")
+            with open(yaml_path, "w") as f:
+                yaml.safe_dump(entry, f)
+            root = SpeasyIndex(name="root", provider="archive", uid="root")
+            load_inventory_file(yaml_path, root)
+            provider = object.__new__(GenericArchive)
+            result = provider._get_data(product=root.archive.test.DS_nc.DENSITY,
+                                        start_time="2010-01-01", stop_time="2010-01-01T23:59",
+                                        extra_http_headers={"X-Forwarded-For": "10.0.0.1"},
+                                        progress=False)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 10)
+
     def test_a_missing_local_master_is_never_opened(self):
         # is_local_file() only says the path looks local, so a master that is not on disk was
         # handed to the codec and the failure came back as a swallowed exception. Symmetrical
