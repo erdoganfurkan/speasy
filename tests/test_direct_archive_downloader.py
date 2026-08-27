@@ -625,6 +625,31 @@ class DirectArchiveDownloader(unittest.TestCase):
         self.assertEqual(len(result), 10)
         self.assertEqual(result.meta.get("UNITS"), "cm**-3")
 
+    def test_a_missing_local_master_is_never_opened(self):
+        # is_local_file() only says the path looks local, so a master that is not on disk was
+        # handed to the codec and the failure came back as a swallowed exception. Symmetrical
+        # with the reachability check already done for remote masters: decide up front.
+        import tempfile
+        import yaml
+        from unittest.mock import patch
+        from speasy.core.inventory.indexes import SpeasyIndex
+        from speasy.data_providers.generic_archive import load_inventory_file
+
+        with tempfile.TemporaryDirectory() as d:
+            entry = {"DS_no_master": {"inventory_path": "archive/test",
+                                      "master_file": os.path.join(d, "not_there.cdf"),
+                                      "url_pattern": os.path.join(d, "d{Y}.cdf"),
+                                      "split_rule": "regular"}}
+            yaml_path = os.path.join(d, "archive.yaml")
+            with open(yaml_path, "w") as f:
+                yaml.safe_dump(entry, f)
+            root = SpeasyIndex(name="root", provider="archive", uid="root")
+            target = 'speasy.data_providers.generic_archive._dataset_from_master'
+            with patch(target) as from_master:
+                load_inventory_file(yaml_path, root)
+            from_master.assert_not_called()
+            self.assertFalse(hasattr(root.archive.test, "DS_no_master"))
+
     def test_get_product_with_custom_loader(self):
         v = get_product(
             url_pattern="https://cdaweb.gsfc.nasa.gov/pub/data/arase/pwe/hfa/l3/1min/{Y}/erg_pwe_hfa_l3_1min_{Y}{M:02d}{D:02d}_v05_11.cdf",

@@ -19,7 +19,7 @@ from speasy.core.direct_archive_downloader import get_product
 from speasy.core.codecs import get_codec
 from speasy.core.inventory.indexes import SpeasyIndex, ParameterIndex
 from speasy.core.http import is_server_up
-from speasy.core.url_utils import host_and_port, is_local_file
+from speasy.core.url_utils import host_and_port, is_local_file, local_file_exists
 from speasy.products.variable import SpeasyVariable
 from speasy.core.cache import CacheCall, CACHE_ALLOWED_KWARGS
 
@@ -59,6 +59,17 @@ def _is_up(host, port) -> bool:
 def _is_reachable(url: str) -> bool:
     host, port = host_and_port(url)
     return _is_up(host, port)
+
+
+def _master_is_available(master_file: str) -> bool:
+    """A master we cannot open is a master we must not build an inventory from.
+
+    is_local_file() only says the URL looks local, which was enough to accept a master
+    that is not on disk and to fail much later, inside the codec.
+    """
+    if is_local_file(master_file):
+        return local_file_exists(master_file)
+    return _is_reachable(master_file)
 
 
 def _public_meta(node: SpeasyIndex) -> dict:
@@ -143,7 +154,7 @@ def _load_inventory_entry(name, entry, root: SpeasyIndex):
     if 'variables' in entry:
         dataset = _dataset_from_variables(name, path, entry_meta, entry['variables'],
                                           codec_id=entry.get('codec', ''), dataset_meta=entry.get('meta'))
-    elif master_file and (is_local_file(master_file) or _is_reachable(master_file)):
+    elif master_file and _master_is_available(master_file):
         dataset = _dataset_from_master(name, path, entry_meta,
                                        master_file, entry.get('codec', ''),
                                        dataset_meta=entry.get('meta'),
