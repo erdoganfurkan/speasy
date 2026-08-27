@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Tuple, Callable
 from urllib.parse import urlparse, urlencode
 from functools import wraps
@@ -160,3 +161,32 @@ def to_local_path(url: str) -> str:
             path = path[1:]
         return path
     return url
+
+
+def local_file_exists(url: str) -> bool:
+    """Returns true if url is a local path *and* that file is really there.
+
+    Remote URLs are never checked, their existence is the server's answer.
+
+    Parameters
+    ----------
+    url : str
+        file url formatted as local path or standard URL format
+
+    Returns
+    -------
+    bool
+        True if url points at an existing local file
+
+    Examples
+    --------
+
+    >>> from speasy.core.url_utils import local_file_exists
+
+    >>> local_file_exists("https://example.com/f.cdf")
+    False
+
+    >>> local_file_exists("/does/not/exist.cdf")
+    False
+    """
+    return is_local_file(url) and os.path.exists(to_local_path(url))
