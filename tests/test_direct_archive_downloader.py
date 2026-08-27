@@ -567,6 +567,64 @@ class DirectArchiveDownloader(unittest.TestCase):
         self.assertEqual(result.meta.get("Custom_field"), "custom_value")
         self.assertEqual(result.meta.get("UNITS"), "made_up_unit")
 
+    def _netcdf_archive_with_master(self, tmp_dir):
+        # A plain netCDF archive: the data file holds the records and nothing else, the master
+        # declares which variable is data, what its time axis is and what unit it carries.
+        import netCDF4
+        master = os.path.join(tmp_dir, "master.nc")
+        ds = netCDF4.Dataset(master, "w")
+        ds.createDimension("time", 0)
+        epoch = ds.createVariable("Epoch", "f8", ("time",))
+        epoch.units = "seconds since 1970-01-01"
+        epoch.VAR_TYPE = "support_data"
+        density = ds.createVariable("DENSITY", "f4", ("time",))
+        density.VAR_TYPE = "data"
+        density.DEPEND_0 = "Epoch"
+        density.UNITS = "cm**-3"
+        ds.close()
+
+        data = os.path.join(tmp_dir, "data_20100101.nc")
+        ds = netCDF4.Dataset(data, "w")
+        ds.createDimension("time", 10)
+        epoch = ds.createVariable("Epoch", "f8", ("time",))
+        epoch.units = "seconds since 1970-01-01"
+        epoch[:] = np.arange(10) * 60.0 + 1262304000.0
+        density = ds.createVariable("DENSITY", "f4", ("time",))
+        density.DEPEND_0 = "Epoch"
+        density[:] = np.linspace(1.0, 10.0, 10).astype("f4")
+        ds.close()
+        return master, os.path.join(tmp_dir, "data_{Y}{M:02d}{D:02d}.nc")
+
+    def test_get_data_uses_the_master_file_to_decode_a_netcdf_archive(self):
+        # The master is not only an inventory-build concern: _get_data() used to drop it, so the
+        # codec was handed a file with no ISTP attributes and found no data variable at all.
+        # This test fails before the fix -- the result is None.
+        try:
+            import netCDF4  # noqa: F401
+        except ImportError:
+            self.skipTest("netCDF4 is not installed")
+        import tempfile
+        import yaml
+        from speasy.core.inventory.indexes import SpeasyIndex
+        from speasy.data_providers.generic_archive import load_inventory_file, GenericArchive
+
+        with tempfile.TemporaryDirectory() as d:
+            master, pattern = self._netcdf_archive_with_master(d)
+            entry = {"DS_nc": {"inventory_path": "archive/test", "master_file": master,
+                               "codec": "nc", "url_pattern": pattern, "split_rule": "regular"}}
+            yaml_path = os.path.join(d, "archive.yaml")
+            with open(yaml_path, "w") as f:
+                yaml.safe_dump(entry, f)
+            root = SpeasyIndex(name="root", provider="archive", uid="root")
+            load_inventory_file(yaml_path, root)
+            param = root.archive.test.DS_nc.DENSITY
+            provider = object.__new__(GenericArchive)
+            result = provider._get_data(product=param, start_time="2010-01-01", stop_time="2010-01-01T23:59")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 10)
+        self.assertEqual(result.meta.get("UNITS"), "cm**-3")
+
     def test_get_product_with_custom_loader(self):
         v = get_product(
             url_pattern="https://cdaweb.gsfc.nasa.gov/pub/data/arase/pwe/hfa/l3/1min/{Y}/erg_pwe_hfa_l3_1min_{Y}{M:02d}{D:02d}_v05_11.cdf",

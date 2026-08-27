@@ -40,10 +40,14 @@ def apply_date_format(txt: str, date: datetime) -> str:
 
 
 @CacheCall(cache_retention=timedelta(hours=12), is_pure=True)
-def _read_cdf(url: Optional[str], variable: str, master_cdf_url: Optional[str] = None) -> Optional[SpeasyVariable]:
+def _read_cdf(url: Optional[str], variable: str, master_cdf_url: Optional[str] = None,
+              master_file: Optional[str] = None) -> Optional[SpeasyVariable]:
+    # Deliberately no **kwargs: an archive-config key that reaches this far has leaked, and
+    # a TypeError here is how that gets noticed rather than silently swallowed.
     if url is None:
         return None
-    return get_codec('application/x-cdf').load_variable(file=url, variable=variable, master_cdf_url=master_cdf_url,
+    return get_codec('application/x-cdf').load_variable(file=url, variable=variable,
+                                                        master_file=master_file or master_cdf_url,
                                                         cache_remote_files=True)
 
 

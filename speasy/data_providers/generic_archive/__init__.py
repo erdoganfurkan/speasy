@@ -206,11 +206,13 @@ class GenericArchive(DataProvider):
         ga_cfg: dict = dict(getattr(product, 'spz_ga_cfg'))  # copy: spz_ga_cfg is shared across the dataset and its params
         meta_priority = ga_cfg.pop('meta_priority', 'file')
         ga_cfg.pop('inventory_path', None)
-        ga_cfg.pop('master_cdf', None)
-        ga_cfg.pop('master_file', None)
+        # The master is not only an inventory-build concern: a format that carries little
+        # metadata of its own (netCDF, and any ISTP-lite file) needs it again when the data
+        # is decoded, or the variable comes back stripped of the axes the master declares.
+        master_file = ga_cfg.pop('master_file', None) or ga_cfg.pop('master_cdf', None)
         ga_cfg.pop('meta', None)
         ga_cfg.pop('variables', None)
-        result = get_product(**ga_cfg,
+        result = get_product(**ga_cfg, master_file=master_file,
                              variable=product.spz_name(), start_time=start_time, stop_time=stop_time, **kwargs)
         if result is not None:
             _patch_meta(result, _public_meta(product), meta_priority)
